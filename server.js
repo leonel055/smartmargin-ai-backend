@@ -31,8 +31,18 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(helmet());
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : ['http://localhost:4200', 'https://smartmarginia.netlify.app'];
+
 app.use(cors({
-  origin: 'https://smartmarginia.netlify.app',
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('No permitido por CORS'));
+    }
+  },
   credentials: true
 }));
 app.use(cookieParser());
