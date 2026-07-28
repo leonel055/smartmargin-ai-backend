@@ -34,6 +34,13 @@ app.use(helmet());
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
   .split(',').map(s => s.trim()).filter(Boolean);
 
+  console.log("ALLOWED_ORIGINS:", ALLOWED_ORIGINS);
+
+app.use((req, res, next) => {
+  console.log("Origin recibido:", req.headers.origin);
+  next();
+});
+
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
