@@ -1,13 +1,16 @@
 const { Op } = require('sequelize');
 const bcrypt = require('bcryptjs');
 const { Usuario } = require('../models');
+const { resolverEmpresaId } = require('../helpers/empresaHelper');
 
 const usuarioController = {
   // GET /api/usuarios
   listar: async (req, res) => {
     try {
       const { rol, activo, busqueda } = req.query;
-      const where = {};
+      const empresaId = resolverEmpresaId(req.usuario);
+
+      const where = { empresaId };
 
       if (rol) where.rol = rol;
       if (activo !== undefined) where.activo = activo === 'true';
@@ -53,6 +56,7 @@ const usuarioController = {
   crear: async (req, res) => {
     try {
       const { nombre, apellido, email, password, rol, sector, zonaId, sucursalId } = req.body;
+      const empresaId = resolverEmpresaId(req.usuario);
 
       // Validar email único
       const existente = await Usuario.findOne({ where: { email } });
@@ -72,12 +76,12 @@ const usuarioController = {
       }
 
       // Validar rol válido
-      const rolesValidos = ['dueno', 'gerente', 'empleado'];
+      const rolesValidos = ['dueno', 'gerente', 'empleado', 'administrador'];
       const rolFinal = rol || 'empleado';
       if (!rolesValidos.includes(rolFinal)) {
         return res.status(400).json({
           success: false,
-          message: 'Rol inválido. Debe ser: dueno, gerente o empleado',
+          message: 'Rol inválido',
         });
       }
 
@@ -110,6 +114,7 @@ const usuarioController = {
         sector: sector || null,
         zonaId: zonaId || null,
         sucursalId: sucursalId || null,
+        empresaId,
       });
 
       res.status(201).json({
@@ -123,6 +128,7 @@ const usuarioController = {
           sector: usuario.sector,
           zonaId: usuario.zonaId,
           sucursalId: usuario.sucursalId,
+          empresaId: usuario.empresaId,
         },
         message: 'Usuario creado exitosamente',
       });
@@ -139,8 +145,9 @@ const usuarioController = {
     try {
       const { id } = req.params;
       const { nombre, apellido, email, rol, sector, zonaId, sucursalId } = req.body;
+      const empresaId = resolverEmpresaId(req.usuario);
 
-      const usuario = await Usuario.findByPk(id);
+      const usuario = await Usuario.findOne({ where: { id, empresaId } });
       if (!usuario) {
         return res.status(404).json({
           success: false,
@@ -160,12 +167,12 @@ const usuarioController = {
       }
 
       // Validar rol válido si cambió
-      const rolesValidos = ['dueno', 'gerente', 'empleado'];
+      const rolesValidos = ['dueno', 'gerente', 'empleado', 'administrador'];
       const rolFinal = rol || usuario.rol;
       if (rol && !rolesValidos.includes(rol)) {
         return res.status(400).json({
           success: false,
-          message: 'Rol inválido. Debe ser: dueno, gerente o empleado',
+          message: 'Rol inválido',
         });
       }
 
@@ -208,6 +215,7 @@ const usuarioController = {
           sector: usuario.sector,
           zonaId: usuario.zonaId,
           sucursalId: usuario.sucursalId,
+          empresaId: usuario.empresaId,
         },
         message: 'Usuario actualizado exitosamente',
       });
@@ -223,6 +231,7 @@ const usuarioController = {
   desactivar: async (req, res) => {
     try {
       const { id } = req.params;
+      const empresaId = resolverEmpresaId(req.usuario);
 
       // No puede desactivarse a sí mismo
       if (req.usuario.id === parseInt(id)) {
@@ -232,7 +241,7 @@ const usuarioController = {
         });
       }
 
-      const usuario = await Usuario.findByPk(id);
+      const usuario = await Usuario.findOne({ where: { id, empresaId } });
       if (!usuario) {
         return res.status(404).json({
           success: false,
@@ -243,12 +252,12 @@ const usuarioController = {
       // Verificar que no sea el último dueño activo
       if (usuario.rol === 'dueno') {
         const duenosActivos = await Usuario.count({
-          where: { rol: 'dueno', activo: true },
+          where: { empresaId, rol: 'dueno', activo: true },
         });
         if (duenosActivos <= 1) {
           return res.status(400).json({
             success: false,
-            message: 'No se puede desactivar al único dueño activo del sistema',
+            message: 'No se puede desactivar al único dueño activo de la empresa',
           });
         }
       }

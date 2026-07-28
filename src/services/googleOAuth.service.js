@@ -41,7 +41,7 @@ const encontrarOCrearUsuario = async (googleData, codigoInvitacion) => {
 
     usuario.googleId = googleId;
 
-    if (!usuario.empresaId || !usuario.sucursalId || !usuario.zonaId || !usuario.departamento) {
+    if (!usuario.empresaId || !usuario.sucursalId || !usuario.zonaId) {
       if (!codigoInvitacion) {
         throw new Error('Código de invitación requerido para vincular el usuario OAuth al tenant.');
       }
@@ -61,7 +61,6 @@ const encontrarOCrearUsuario = async (googleData, codigoInvitacion) => {
       usuario.empresaId = usuario.empresaId || codigo.empresaId;
       usuario.sucursalId = usuario.sucursalId || codigo.sucursalId;
       usuario.zonaId = usuario.zonaId || codigo.zonaId || null;
-      usuario.departamento = usuario.departamento || codigo.departamento || null;
 
       codigo.usosRealizados += 1;
       if (codigo.usosRealizados >= codigo.usosMaximos) {
@@ -96,7 +95,6 @@ const encontrarOCrearUsuario = async (googleData, codigoInvitacion) => {
     empresaId: codigo.empresaId || null,
     sucursalId: codigo.sucursalId || null,
     zonaId: codigo.zonaId || null,
-    departamento: codigo.departamento || null,
     activo: true,
   });
 

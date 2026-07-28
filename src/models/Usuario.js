@@ -30,10 +30,6 @@ module.exports = (sequelize) => {
         type: DataTypes.ENUM("dueno", "administrador", "gerente", "empleado"),
         defaultValue: "empleado",
       },
-      departamento: {
-        type: DataTypes.ENUM("comercial", "operativo"),
-        allowNull: true,
-      },
       sector: {
         type: DataTypes.ENUM("ventas", "finanzas", "stock"),
         allowNull: true,

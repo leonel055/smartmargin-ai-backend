@@ -57,10 +57,6 @@ module.exports = {
         type: Sequelize.ENUM("dueno", "administrador", "gerente", "empleado"),
         defaultValue: "empleado",
       },
-      departamento: {
-        type: Sequelize.ENUM("comercial", "operativo"),
-        allowNull: true,
-      },
       sector: {
         type: Sequelize.ENUM("ventas", "finanzas", "stock"),
         allowNull: true,

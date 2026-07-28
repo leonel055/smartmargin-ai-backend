@@ -5,12 +5,12 @@ const authJWT = require('../middlewares/authJWT');
 const verifyRole = require('../middlewares/verifyRole');
 
 // POST /api/pagos/crear-preferencia - Solo Dueño
-router.post('/crear-preferencia', authJWT, verifyRole('dueno'), pagoController.crearPreferencia);
+router.post('/crear-preferencia', authJWT, verifyRole('dueno', 'administrador'), pagoController.crearPreferencia);
 
 // POST /api/pagos/webhook - Público (MercadoPago)
 router.post('/webhook', pagoController.manejarWebhook);
 
 // GET /api/pagos/estado - Solo Dueño
-router.get('/estado', authJWT, verifyRole('dueno'), pagoController.obtenerEstado);
+router.get('/estado', authJWT, verifyRole('dueno', 'administrador'), pagoController.obtenerEstado);
 
 module.exports = router;

@@ -1,25 +1,22 @@
+const { Op } = require('sequelize');
 const { Zona, Usuario } = require('../models');
+const { resolverEmpresaId } = require('../helpers/empresaHelper');
 
 const zonaController = {
-  // GET /api/zonas - Dueno/Admin: todas las suyas, Gerente: solo su zona
+  // GET /api/zonas
   listar: async (req, res) => {
     try {
       const usuario = await Usuario.findByPk(req.usuario.id);
+      const empresaId = resolverEmpresaId(usuario);
 
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.limit) || 10;
       const offset = (page - 1) * limit;
 
       let result;
-      if (usuario.rol === 'dueno') {
+      if (usuario.rol === 'dueno' || usuario.rol === 'administrador') {
         result = await Zona.findAndCountAll({
-          where: { empresaId: usuario.id },
-          offset, limit,
-          order: [['nombre', 'ASC']],
-        });
-      } else if (usuario.rol === 'administrador') {
-        result = await Zona.findAndCountAll({
-          where: { empresaId: usuario.empresaId },
+          where: { empresaId },
           offset, limit,
           order: [['nombre', 'ASC']],
         });
@@ -51,10 +48,11 @@ const zonaController = {
     }
   },
 
-  // POST /api/zonas - solo Dueno
+  // POST /api/zonas
   crear: async (req, res) => {
     try {
       const { nombre } = req.body;
+      const empresaId = resolverEmpresaId(req.usuario);
 
       if (!nombre || !nombre.trim()) {
         return res.status(400).json({
@@ -63,17 +61,19 @@ const zonaController = {
         });
       }
 
-      const existente = await Zona.findOne({ where: { nombre: nombre.trim() } });
+      const existente = await Zona.findOne({
+        where: { nombre: nombre.trim(), empresaId },
+      });
       if (existente) {
         return res.status(400).json({
           success: false,
-          message: 'Ya existe una zona con ese nombre',
+          message: 'Ya existe una zona con ese nombre en tu empresa',
         });
       }
 
       const zona = await Zona.create({
         nombre: nombre.trim(),
-        empresaId: req.usuario.id,
+        empresaId,
       });
 
       res.status(201).json({
@@ -89,13 +89,14 @@ const zonaController = {
     }
   },
 
-  // PUT /api/zonas/:id - solo Dueno
+  // PUT /api/zonas/:id
   actualizar: async (req, res) => {
     try {
       const { id } = req.params;
       const { nombre } = req.body;
+      const empresaId = resolverEmpresaId(req.usuario);
 
-      const zona = await Zona.findByPk(id);
+      const zona = await Zona.findOne({ where: { id, empresaId } });
       if (!zona) {
         return res.status(404).json({
           success: false,
@@ -111,7 +112,7 @@ const zonaController = {
       }
 
       const existente = await Zona.findOne({
-        where: { nombre: nombre.trim(), id: { [require('sequelize').Op.ne]: id } },
+        where: { nombre: nombre.trim(), empresaId, id: { [Op.ne]: id } },
       });
       if (existente) {
         return res.status(400).json({
@@ -135,12 +136,13 @@ const zonaController = {
     }
   },
 
-  // DELETE /api/zonas/:id - solo Dueno
+  // DELETE /api/zonas/:id
   eliminar: async (req, res) => {
     try {
       const { id } = req.params;
+      const empresaId = resolverEmpresaId(req.usuario);
 
-      const zona = await Zona.findByPk(id);
+      const zona = await Zona.findOne({ where: { id, empresaId } });
       if (!zona) {
         return res.status(404).json({
           success: false,

@@ -1,9 +1,9 @@
 const { Op } = require('sequelize');
-const { Inventario, Producto, Usuario, Sucursal, sequelize } = require('../models');
+const { Inventario, Producto, Usuario, Sucursal, Zona, sequelize } = require('../models');
+const { resolverEmpresaId } = require('../helpers/empresaHelper');
 
 const inventarioController = {
-  // GET /api/inventario - Dueno: todo, Gerente: su zona, Empleado: su sucursal
-  // ?stockCritico=true filtra stockActual < stockMinimo
+  // GET /api/inventario
   listar: async (req, res) => {
     try {
       const { stockCritico } = req.query;
@@ -11,17 +11,25 @@ const inventarioController = {
       const limit = Math.min(100, parseInt(req.query.limit) || 20);
       const offset = (page - 1) * limit;
       const usuario = await Usuario.findByPk(req.usuario.id);
+      const empresaId = resolverEmpresaId(usuario);
 
       let where = {};
 
-      if (usuario.rol === 'gerente') {
+      if (usuario.rol === 'dueno' || usuario.rol === 'administrador') {
         const sucursales = await Sucursal.findAll({
-          where: { zonaId: usuario.zonaId },
+          include: [{ model: Zona, as: 'zona', where: { empresaId }, attributes: [] }],
           attributes: ['id'],
         });
         const sucursalIds = sucursales.map(s => s.id);
         where.sucursalId = { [Op.in]: sucursalIds };
-      } else if (usuario.rol === 'empleado') {
+      } else if (usuario.rol === 'gerente') {
+        const whereSuc = usuario.zonaId
+          ? { zonaId: usuario.zonaId }
+          : { id: usuario.sucursalId };
+        const sucursales = await Sucursal.findAll({ where: whereSuc, attributes: ['id'] });
+        const sucursalIds = sucursales.map(s => s.id);
+        where.sucursalId = { [Op.in]: sucursalIds };
+      } else {
         where.sucursalId = usuario.sucursalId;
       }
 
@@ -64,36 +72,32 @@ const inventarioController = {
   crear: async (req, res) => {
     try {
       const { productoId, sucursalId, stockActual, stockMinimo, stockMaximo, precioVenta } = req.body;
+      const empresaId = resolverEmpresaId(req.usuario);
 
       if (!productoId) {
-        return res.status(400).json({
-          success: false,
-          message: 'El producto es obligatorio',
-        });
+        return res.status(400).json({ success: false, message: 'El producto es obligatorio' });
       }
       if (!sucursalId) {
-        return res.status(400).json({
-          success: false,
-          message: 'La sucursal es obligatoria',
-        });
+        return res.status(400).json({ success: false, message: 'La sucursal es obligatoria' });
       }
+
+      // Validar que la sucursal pertenece a la empresa
+      const sucursal = await Sucursal.findOne({
+        where: { id: sucursalId },
+        include: [{ model: Zona, as: 'zona', where: { empresaId } }],
+      });
+      if (!sucursal) {
+        return res.status(400).json({ success: false, message: 'La sucursal no pertenece a tu empresa' });
+      }
+
       if (stockActual === undefined || stockActual === null || Number(stockActual) < 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'El stock actual debe ser un numero entero >= 0',
-        });
+        return res.status(400).json({ success: false, message: 'El stock actual debe ser un numero entero >= 0' });
       }
       if (stockMinimo === undefined || stockMinimo === null || Number(stockMinimo) < 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'El stock minimo debe ser un numero entero >= 0',
-        });
+        return res.status(400).json({ success: false, message: 'El stock minimo debe ser un numero entero >= 0' });
       }
       if (precioVenta === undefined || precioVenta === null || Number(precioVenta) <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'El precio de venta debe ser un numero positivo',
-        });
+        return res.status(400).json({ success: false, message: 'El precio de venta debe ser un numero positivo' });
       }
 
       const existente = await Inventario.findOne({
@@ -133,32 +137,26 @@ const inventarioController = {
     try {
       const { id } = req.params;
       const { stockActual, stockMinimo, stockMaximo, precioVenta } = req.body;
+      const empresaId = resolverEmpresaId(req.usuario);
 
-      const inventario = await Inventario.findByPk(id);
+      const inventario = await Inventario.findByPk(id, {
+        include: [{
+          model: Sucursal, as: 'sucursal',
+          include: [{ model: Zona, as: 'zona', where: { empresaId } }],
+        }],
+      });
       if (!inventario) {
-        return res.status(404).json({
-          success: false,
-          message: 'Inventario no encontrado',
-        });
+        return res.status(404).json({ success: false, message: 'Inventario no encontrado' });
       }
 
       if (stockActual !== undefined && Number(stockActual) < 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'El stock actual debe ser un numero entero >= 0',
-        });
+        return res.status(400).json({ success: false, message: 'El stock actual debe ser un numero entero >= 0' });
       }
       if (stockMinimo !== undefined && Number(stockMinimo) < 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'El stock minimo debe ser un numero entero >= 0',
-        });
+        return res.status(400).json({ success: false, message: 'El stock minimo debe ser un numero entero >= 0' });
       }
       if (precioVenta !== undefined && Number(precioVenta) <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'El precio de venta debe ser un numero positivo',
-        });
+        return res.status(400).json({ success: false, message: 'El precio de venta debe ser un numero positivo' });
       }
 
       await inventario.update({
@@ -185,13 +183,16 @@ const inventarioController = {
   eliminar: async (req, res) => {
     try {
       const { id } = req.params;
+      const empresaId = resolverEmpresaId(req.usuario);
 
-      const inventario = await Inventario.findByPk(id);
+      const inventario = await Inventario.findByPk(id, {
+        include: [{
+          model: Sucursal, as: 'sucursal',
+          include: [{ model: Zona, as: 'zona', where: { empresaId } }],
+        }],
+      });
       if (!inventario) {
-        return res.status(404).json({
-          success: false,
-          message: 'Inventario no encontrado',
-        });
+        return res.status(404).json({ success: false, message: 'Inventario no encontrado' });
       }
 
       await inventario.destroy();

@@ -22,7 +22,7 @@ const authController = {
       let sucursalId = null;
       let zonaId = null;
       let empresaId = null;
-      let departamento = null; // ◄ Inicializamos el campo departamento
+      let codigo = null;
 
       if (rol && rol !== "dueno") {
         if (!codigoInvitacion) {
@@ -33,7 +33,7 @@ const authController = {
           });
         }
 
-        const codigo = await CodigoInvitacion.findOne({
+        codigo = await CodigoInvitacion.findOne({
           where: { codigo: codigoInvitacion, activo: true },
         });
 
@@ -54,8 +54,7 @@ const authController = {
         // Asignamos las dependencias estructurales directo desde el código usado
         sucursalId = codigo.sucursalId;
         zonaId = codigo.zonaId || null;
-        empresaId = codigo.empresaId; // Vinculación automática a la empresa
-        departamento = codigo.departamento; // ◄ Heredamos el departamento comercial/operativo asignado al código
+        empresaId = codigo.empresaId;
       }
 
       const hashedPassword = await bcrypt.hash(password, 10);
@@ -70,15 +69,16 @@ const authController = {
         sector,
         sucursalId,
         zonaId,
-        empresaId, // Fijado de consistencia multitenant
-        departamento, // ◄ Persistencia en PostgreSQL (ENUM 'comercial' o 'operativo')
+        empresaId,
       });
 
-      codigo.usosRealizados += 1;
-      if (codigo.usosRealizados >= codigo.usosMaximos) {
-        codigo.activo = false;
+      if (codigo) {
+        codigo.usosRealizados += 1;
+        if (codigo.usosRealizados >= codigo.usosMaximos) {
+          codigo.activo = false;
+        }
+        await codigo.save();
       }
-      await codigo.save();
 
       res.status(201).json({
         success: true,
@@ -88,7 +88,8 @@ const authController = {
           apellido: nuevoUsuario.apellido,
           email: nuevoUsuario.email,
           rol: nuevoUsuario.rol,
-          departamento: nuevoUsuario.departamento,
+          sucursalId: nuevoUsuario.sucursalId,
+          zonaId: nuevoUsuario.zonaId,
         },
         message: "Usuario registrado con éxito",
       });
@@ -121,7 +122,6 @@ const authController = {
         });
       }
 
-      // ◄ MODIFICACIÓN CRÍTICA JWT: Inyectamos empresaId y departamento en el Payload
       // Si el usuario es dueño, su empresaId es su propio ID
       const payloadEmpresaId =
         usuario.rol === "dueno" ? usuario.id : usuario.empresaId;
@@ -136,7 +136,8 @@ const authController = {
           id: usuario.id,
           rol: usuario.rol,
           empresaId: payloadEmpresaId,
-          departamento: usuario.departamento,
+          sucursalId: usuario.sucursalId,
+          zonaId: usuario.zonaId,
         },
         process.env.JWT_SECRET,
         { expiresIn: "24h" },
@@ -149,8 +150,9 @@ const authController = {
           nombre: usuario.nombre,
           email: usuario.email,
           rol: usuario.rol,
-          departamento: usuario.departamento,
           empresaId: payloadEmpresaId,
+          sucursalId: usuario.sucursalId,
+          zonaId: usuario.zonaId,
           firstLogin,
         },
         token,
@@ -222,7 +224,8 @@ const authController = {
           id: usuario.id,
           rol: usuario.rol,
           empresaId: payloadEmpresaId,
-          departamento: usuario.departamento,
+          sucursalId: usuario.sucursalId,
+          zonaId: usuario.zonaId,
         },
         process.env.JWT_SECRET,
         { expiresIn: "24h" }
@@ -236,8 +239,9 @@ const authController = {
           apellido: usuario.apellido,
           email: usuario.email,
           rol: usuario.rol,
-          departamento: usuario.departamento,
           empresaId: payloadEmpresaId,
+          sucursalId: usuario.sucursalId,
+          zonaId: usuario.zonaId,
         },
         token: jwtToken,
         message: "Login con Google exitoso",

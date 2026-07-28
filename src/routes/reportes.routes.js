@@ -4,11 +4,11 @@ const reporteController = require("../controllers/reporteController");
 const authJWT = require("../middlewares/authJWT");
 const verifyRole = require("../middlewares/verifyRole");
 const auditLog = require("../middlewares/auditLog");
-router.get("/", authJWT, reporteController.listar);
+router.get("/", authJWT, verifyRole("dueno", "administrador", "gerente"), reporteController.listar);
 router.post(
   "/generar",
   authJWT,
-  verifyRole("dueno", "gerente"),
+  verifyRole("dueno", "administrador", "gerente"),
   auditLog(),
   reporteController.generar,
 );

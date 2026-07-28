@@ -1,5 +1,5 @@
 const { Sucursal, Usuario, Zona, CodigoInvitacion, Suscripcion } = require('../models');
-const crypto = require('crypto');
+const { resolverEmpresaId } = require('../helpers/empresaHelper');
 
 const LIMITES = {
   basico: { sucursales: 3, gerentes: 3, empleados: 30 },
@@ -7,54 +7,34 @@ const LIMITES = {
   enterprise: { sucursales: Infinity, gerentes: Infinity, empleados: Infinity },
 };
 
-const generarCodigoAleatorio = (rol) => {
-  const hex = crypto.randomBytes(4).toString('hex').toUpperCase();
-  return `${rol === 'gerente' ? 'GER' : 'EMP'}-${hex}`;
-};
-
-const crearCodigoUnico = async (rol) => {
-  for (let i = 0; i < 10; i++) {
-    const codigo = generarCodigoAleatorio(rol);
-    const existe = await CodigoInvitacion.findOne({ where: { codigo } });
-    if (!existe) return codigo;
-  }
-  throw new Error('No se pudo generar un código único');
-};
-
 const sucursalController = {
-  // GET /api/sucursales - Dueno/Admin: todas las suyas, Gerente: su zona, Empleado: su sucursal
+  // GET /api/sucursales
   listar: async (req, res) => {
     try {
       const usuario = await Usuario.findByPk(req.usuario.id);
+      const empresaId = resolverEmpresaId(usuario);
 
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.limit) || 10;
       const offset = (page - 1) * limit;
 
       let result;
-      if (usuario.rol === 'dueno') {
+      if (usuario.rol === 'dueno' || usuario.rol === 'administrador') {
         result = await Sucursal.findAndCountAll({
           include: [{
             association: 'zona',
             attributes: ['id', 'nombre'],
-            where: { empresaId: usuario.id },
-          }],
-          offset, limit,
-          order: [['nombre', 'ASC']],
-        });
-      } else if (usuario.rol === 'administrador') {
-        result = await Sucursal.findAndCountAll({
-          include: [{
-            association: 'zona',
-            attributes: ['id', 'nombre'],
-            where: { empresaId: usuario.empresaId },
+            where: { empresaId },
           }],
           offset, limit,
           order: [['nombre', 'ASC']],
         });
       } else if (usuario.rol === 'gerente') {
+        const whereGerente = usuario.zonaId
+          ? { zonaId: usuario.zonaId }
+          : { id: usuario.sucursalId };
         result = await Sucursal.findAndCountAll({
-          where: { zonaId: usuario.zonaId },
+          where: whereGerente,
           include: [{ association: 'zona', attributes: ['id', 'nombre'] }],
           offset, limit,
           order: [['nombre', 'ASC']],
@@ -85,10 +65,11 @@ const sucursalController = {
     }
   },
 
-  // POST /api/sucursales - solo Dueno
+  // POST /api/sucursales
   crear: async (req, res) => {
     try {
       const { nombre, direccion, lat, lng, telefono, zonaId, gerentesMax, empleadosMax } = req.body;
+      const empresaId = resolverEmpresaId(req.usuario);
 
       if (!nombre || !nombre.trim()) {
         return res.status(400).json({ success: false, message: 'El nombre de la sucursal es obligatorio' });
@@ -98,12 +79,18 @@ const sucursalController = {
         return res.status(400).json({ success: false, message: 'La zona es obligatoria' });
       }
 
+      // Validar que la zona pertenece a la empresa
+      const zona = await Zona.findOne({ where: { id: zonaId, empresaId } });
+      if (!zona) {
+        return res.status(400).json({ success: false, message: 'La zona no pertenece a tu empresa' });
+      }
+
       const gerentes = gerentesMax ? parseInt(gerentesMax) : 1;
       const empleados = empleadosMax ? parseInt(empleadosMax) : 10;
 
       // Validar límites del plan
       const suscripcion = await Suscripcion.findOne({
-        where: { usuarioId: req.usuario.id, estado: 'activo' },
+        where: { usuarioId: empresaId, estado: 'activo' },
       });
 
       if (!suscripcion) {
@@ -120,7 +107,7 @@ const sucursalController = {
 
       // Validar cantidad de sucursales
       const sucursalesActuales = await Sucursal.count({
-        include: [{ model: Zona, as: 'zona', where: { empresaId: req.usuario.id } }],
+        include: [{ model: Zona, as: 'zona', where: { empresaId } }],
       });
 
       if (sucursalesActuales >= limite.sucursales) {
@@ -132,7 +119,7 @@ const sucursalController = {
 
       // Validar gerentes
       const totalGerentes = await CodigoInvitacion.sum('usosMaximos', {
-        where: { empresaId: req.usuario.id, rol: 'gerente', activo: true },
+        where: { empresaId, rol: 'gerente', activo: true },
       }) || 0;
 
       if (totalGerentes + gerentes > limite.gerentes) {
@@ -144,7 +131,7 @@ const sucursalController = {
 
       // Validar empleados
       const totalEmpleados = await CodigoInvitacion.sum('usosMaximos', {
-        where: { empresaId: req.usuario.id, rol: 'empleado', activo: true },
+        where: { empresaId, rol: 'empleado', activo: true },
       }) || 0;
 
       if (totalEmpleados + empleados > limite.empleados) {
@@ -163,48 +150,41 @@ const sucursalController = {
         zonaId,
       });
 
-      // Auto-generar códigos vinculados a esta sucursal
-      const codigoGER = await crearCodigoUnico('gerente');
-      const codigoEMP = await crearCodigoUnico('empleado');
-
-      const ger = await CodigoInvitacion.create({
-        codigo: codigoGER, rol: 'gerente', usosMaximos: gerentes,
-        empresaId: req.usuario.id, sucursalId: sucursal.id,
-      });
-
-      const emp = await CodigoInvitacion.create({
-        codigo: codigoEMP, rol: 'empleado', usosMaximos: empleados,
-        empresaId: req.usuario.id, sucursalId: sucursal.id,
-      });
-
       res.status(201).json({
         success: true,
-        data: {
-          sucursal,
-          codigos: {
-            gerente: ger.codigo,
-            empleado: emp.codigo,
-          },
-        },
-        message: 'Sucursal creada con 2 códigos de invitación',
+        data: sucursal,
+        message: 'Sucursal creada exitosamente',
       });
     } catch (error) {
       res.status(500).json({ success: false, message: 'Error al crear sucursal: ' + error.message });
     }
   },
 
-  // PUT /api/sucursales/:id - solo Dueno
+  // PUT /api/sucursales/:id
   actualizar: async (req, res) => {
     try {
       const { id } = req.params;
       const { nombre, direccion, lat, lng, telefono, zonaId } = req.body;
+      const empresaId = resolverEmpresaId(req.usuario);
 
-      const sucursal = await Sucursal.findByPk(id);
+      // Ownership check
+      const sucursal = await Sucursal.findOne({
+        where: { id },
+        include: [{ model: Zona, as: 'zona', where: { empresaId } }],
+      });
       if (!sucursal) {
         return res.status(404).json({
           success: false,
           message: 'Sucursal no encontrada',
         });
+      }
+
+      // Si cambia de zona, validar que la nueva zona pertenece a la empresa
+      if (zonaId && zonaId !== sucursal.zonaId) {
+        const zona = await Zona.findOne({ where: { id: zonaId, empresaId } });
+        if (!zona) {
+          return res.status(400).json({ success: false, message: 'La zona no pertenece a tu empresa' });
+        }
       }
 
       await sucursal.update({
@@ -229,12 +209,16 @@ const sucursalController = {
     }
   },
 
-  // DELETE /api/sucursales/:id - solo Dueno
+  // DELETE /api/sucursales/:id
   eliminar: async (req, res) => {
     try {
       const { id } = req.params;
+      const empresaId = resolverEmpresaId(req.usuario);
 
-      const sucursal = await Sucursal.findByPk(id);
+      const sucursal = await Sucursal.findOne({
+        where: { id },
+        include: [{ model: Zona, as: 'zona', where: { empresaId } }],
+      });
       if (!sucursal) {
         return res.status(404).json({
           success: false,

@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
-const { Transaccion, Inventario, Usuario } = require('../models');
+const { Transaccion, Inventario, Usuario, Sucursal, Zona } = require('../models');
+const { resolverEmpresaId } = require('../helpers/empresaHelper');
 
 const transaccionController = {
   // GET /api/transacciones
@@ -9,6 +10,9 @@ const transaccionController = {
       const page = parseInt(req.query.page) || 1;
       const limit = Math.min(100, parseInt(req.query.limit) || 20);
       const offset = (page - 1) * limit;
+      const usuario = await Usuario.findByPk(req.usuario.id);
+      const empresaId = resolverEmpresaId(usuario);
+
       const where = {};
 
       if (fechaDesde || fechaHasta) {
@@ -16,8 +20,39 @@ const transaccionController = {
         if (fechaDesde) where.fecha[Op.gte] = new Date(fechaDesde);
         if (fechaHasta) where.fecha[Op.lte] = new Date(fechaHasta);
       }
-      if (sucursalId) where.sucursalId = parseInt(sucursalId, 10);
       if (tipo) where.tipo = tipo;
+
+      // Filtrar por empresa según rol
+      if (usuario.rol === 'dueno' || usuario.rol === 'administrador') {
+        const sucursales = await Sucursal.findAll({
+          include: [{ model: Zona, as: 'zona', where: { empresaId }, attributes: [] }],
+          attributes: ['id'],
+        });
+        const sucursalIds = sucursales.map(s => s.id);
+        where.sucursalId = { [Op.in]: sucursalIds };
+      } else if (usuario.rol === 'gerente') {
+        const whereSuc = usuario.zonaId
+          ? { zonaId: usuario.zonaId }
+          : { id: usuario.sucursalId };
+        const sucursales = await Sucursal.findAll({
+          where: whereSuc,
+          attributes: ['id'],
+        });
+        const sucursalIds = sucursales.map(s => s.id);
+        where.sucursalId = { [Op.in]: sucursalIds };
+      } else {
+        where.sucursalId = usuario.sucursalId;
+      }
+
+      // Si se pasa sucursalId explícito, validar que esté dentro de las permitidas
+      if (sucursalId) {
+        if (Array.isArray(where.sucursalId?.[Op.in])) {
+          if (!where.sucursalId[Op.in].includes(parseInt(sucursalId))) {
+            return res.status(403).json({ success: false, message: 'No tenés acceso a esa sucursal' });
+          }
+        }
+        where.sucursalId = parseInt(sucursalId, 10);
+      }
 
       const { count: total, rows: data } = await Transaccion.findAndCountAll({
         where,
@@ -51,36 +86,31 @@ const transaccionController = {
   crear: async (req, res) => {
     try {
       const { tipo, cantidad, precioUnitario, productoId, sucursalId, fecha, observaciones } = req.body;
+      const empresaId = resolverEmpresaId(req.usuario);
 
       if (!tipo || !['venta', 'compra'].includes(tipo)) {
-        return res.status(400).json({
-          success: false,
-          message: 'El tipo debe ser venta o compra',
-        });
+        return res.status(400).json({ success: false, message: 'El tipo debe ser venta o compra' });
       }
       if (!cantidad || Number(cantidad) <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'La cantidad debe ser un numero positivo',
-        });
+        return res.status(400).json({ success: false, message: 'La cantidad debe ser un numero positivo' });
       }
       if (!precioUnitario || Number(precioUnitario) <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'El precio unitario debe ser un numero positivo',
-        });
+        return res.status(400).json({ success: false, message: 'El precio unitario debe ser un numero positivo' });
       }
       if (!productoId) {
-        return res.status(400).json({
-          success: false,
-          message: 'El producto es obligatorio',
-        });
+        return res.status(400).json({ success: false, message: 'El producto es obligatorio' });
       }
       if (!sucursalId) {
-        return res.status(400).json({
-          success: false,
-          message: 'La sucursal es obligatoria',
-        });
+        return res.status(400).json({ success: false, message: 'La sucursal es obligatoria' });
+      }
+
+      // Validar que la sucursal pertenece a la empresa
+      const sucursal = await Sucursal.findOne({
+        where: { id: sucursalId },
+        include: [{ model: Zona, as: 'zona', where: { empresaId } }],
+      });
+      if (!sucursal) {
+        return res.status(400).json({ success: false, message: 'La sucursal no pertenece a tu empresa' });
       }
 
       const inventario = await Inventario.findOne({
@@ -103,13 +133,9 @@ const transaccionController = {
             message: `Stock insuficiente. Disponible: ${inventario.stockActual}, requerido: ${cantidadNum}`,
           });
         }
-        await inventario.update({
-          stockActual: inventario.stockActual - cantidadNum,
-        });
+        await inventario.update({ stockActual: inventario.stockActual - cantidadNum });
       } else {
-        await inventario.update({
-          stockActual: inventario.stockActual + cantidadNum,
-        });
+        await inventario.update({ stockActual: inventario.stockActual + cantidadNum });
       }
 
       const transaccion = await Transaccion.create({
@@ -142,13 +168,16 @@ const transaccionController = {
     try {
       const { id } = req.params;
       const { tipo, cantidad, precioUnitario, productoId, sucursalId, fecha, observaciones } = req.body;
+      const empresaId = resolverEmpresaId(req.usuario);
 
-      const transaccion = await Transaccion.findByPk(id);
+      const transaccion = await Transaccion.findByPk(id, {
+        include: [{
+          model: Sucursal, as: 'sucursal',
+          include: [{ model: Zona, as: 'zona', where: { empresaId } }],
+        }],
+      });
       if (!transaccion) {
-        return res.status(404).json({
-          success: false,
-          message: 'Transaccion no encontrada',
-        });
+        return res.status(404).json({ success: false, message: 'Transaccion no encontrada' });
       }
 
       const nuevaCantidad = cantidad !== undefined ? parseInt(cantidad, 10) : transaccion.cantidad;
@@ -163,13 +192,9 @@ const transaccionController = {
       });
       if (inventarioViejo) {
         if (transaccion.tipo === 'venta') {
-          await inventarioViejo.update({
-            stockActual: inventarioViejo.stockActual + transaccion.cantidad,
-          });
+          await inventarioViejo.update({ stockActual: inventarioViejo.stockActual + transaccion.cantidad });
         } else {
-          await inventarioViejo.update({
-            stockActual: inventarioViejo.stockActual - transaccion.cantidad,
-          });
+          await inventarioViejo.update({ stockActual: inventarioViejo.stockActual - transaccion.cantidad });
         }
       }
 
@@ -191,13 +216,9 @@ const transaccionController = {
             message: `Stock insuficiente. Disponible: ${inventarioNuevo.stockActual}, requerido: ${nuevaCantidad}`,
           });
         }
-        await inventarioNuevo.update({
-          stockActual: inventarioNuevo.stockActual - nuevaCantidad,
-        });
+        await inventarioNuevo.update({ stockActual: inventarioNuevo.stockActual - nuevaCantidad });
       } else {
-        await inventarioNuevo.update({
-          stockActual: inventarioNuevo.stockActual + nuevaCantidad,
-        });
+        await inventarioNuevo.update({ stockActual: inventarioNuevo.stockActual + nuevaCantidad });
       }
 
       const total = (nuevoPrecio * nuevaCantidad).toFixed(2);
@@ -230,13 +251,16 @@ const transaccionController = {
   eliminar: async (req, res) => {
     try {
       const { id } = req.params;
+      const empresaId = resolverEmpresaId(req.usuario);
 
-      const transaccion = await Transaccion.findByPk(id);
+      const transaccion = await Transaccion.findByPk(id, {
+        include: [{
+          model: Sucursal, as: 'sucursal',
+          include: [{ model: Zona, as: 'zona', where: { empresaId } }],
+        }],
+      });
       if (!transaccion) {
-        return res.status(404).json({
-          success: false,
-          message: 'Transaccion no encontrada',
-        });
+        return res.status(404).json({ success: false, message: 'Transaccion no encontrada' });
       }
 
       const inventario = await Inventario.findOne({
@@ -244,13 +268,9 @@ const transaccionController = {
       });
       if (inventario) {
         if (transaccion.tipo === 'venta') {
-          await inventario.update({
-            stockActual: inventario.stockActual + transaccion.cantidad,
-          });
+          await inventario.update({ stockActual: inventario.stockActual + transaccion.cantidad });
         } else {
-          await inventario.update({
-            stockActual: inventario.stockActual - transaccion.cantidad,
-          });
+          await inventario.update({ stockActual: inventario.stockActual - transaccion.cantidad });
         }
       }
 

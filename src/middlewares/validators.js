@@ -110,6 +110,10 @@ const generarCodigoValidator = [
     .optional()
     .isInt({ min: 1 })
     .withMessage("sucursalId invalido"),
+  body("zonaId")
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage("zonaId invalido"),
   handleValidationErrors,
 ];
 

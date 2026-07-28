@@ -6,7 +6,6 @@ module.exports = {
       id: { type: Sequelize.INTEGER, primaryKey: true, autoIncrement: true, allowNull: false },
       codigo: { type: Sequelize.STRING(20), allowNull: false, unique: true },
       rol: { type: Sequelize.ENUM("administrador", "gerente", "empleado"), allowNull: false },
-      departamento: { type: Sequelize.ENUM("comercial", "operativo"), allowNull: true },
       usosMaximos: { type: Sequelize.INTEGER, allowNull: false },
       usosRealizados: { type: Sequelize.INTEGER, defaultValue: 0 },
       activo: { type: Sequelize.BOOLEAN, defaultValue: true },

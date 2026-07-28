@@ -50,7 +50,7 @@ const listar = async (req, res) => {
 // Generar un nuevo código aplicando reglas de negocio y jerarquía V3
 const generar = async (req, res) => {
   try {
-    const { rol, usosMaximos, sucursalId, departamento } = req.body;
+    const { rol, usosMaximos, sucursalId, zonaId } = req.body;
 
     // 1. Validar que el rol solicitado sea uno de los tres permitidos
     if (!rol || !["administrador", "gerente", "empleado"].includes(rol)) {
@@ -82,22 +82,10 @@ const generar = async (req, res) => {
       });
     }
 
-    // 3. Validación de departamento exclusiva para el rol Empleado
-    if (
-      rol === "empleado" &&
-      !["comercial", "operativo"].includes(departamento)
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Para el rol 'empleado' es obligatorio especificar el departamento ('comercial' o 'operativo').",
-      });
-    }
-
     const empresaId = obtenerEmpresaId(req);
 
     // 4. Validación de topes máximos según el Plan de la Suscripción
-    const suscripcion = await Suscripcion.findOne({ where: { id: empresaId } });
+    const suscripcion = await Suscripcion.findOne({ where: { usuarioId: empresaId } });
     const plan = suscripcion ? suscripcion.plan : "basico";
     const limitesPlan = LIMITES[plan] || LIMITES.basico;
 
@@ -127,15 +115,13 @@ const generar = async (req, res) => {
       intentos++;
     }
 
-    // 6. Persistencia del registro inyectando el departamento correspondiente
     const nuevo = await CodigoInvitacion.create({
       codigo,
       rol,
       usosMaximos: usosMaximos || 1,
       empresaId,
       sucursalId: sucursalId || null,
-      // Solo guardamos departamento si es empleado, sino queda estructurado en null
-      departamento: rol === "empleado" ? departamento : null,
+      zonaId: zonaId || null,
     });
 
     res.status(201).json({

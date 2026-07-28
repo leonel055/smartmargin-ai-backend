@@ -1,9 +1,26 @@
 const { orquestador } = require("../agents/orquestador");
-const { ReporteAgente } = require("../models");
+const { ReporteAgente, Usuario, Sucursal, Zona } = require("../models");
+const { resolverEmpresaId } = require("../helpers/empresaHelper");
 
 const listar = async (req, res) => {
   try {
+    const usuario = await Usuario.findByPk(req.usuario.id);
+    const empresaId = resolverEmpresaId(usuario);
+
+    // Buscar sucursales de la empresa para filtrar reportes
+    const sucursales = await Sucursal.findAll({
+      include: [{ model: Zona, as: 'zona', where: { empresaId }, attributes: [] }],
+      attributes: ['id'],
+    });
+    const sucursalIds = sucursales.map(s => s.id);
+
     const reportes = await ReporteAgente.findAll({
+      where: {
+        [require('sequelize').Op.or]: [
+          { sucursalId: { [require('sequelize').Op.in]: sucursalIds } },
+          { sucursalId: null },
+        ],
+      },
       order: [["createdAt", "DESC"]],
     });
 
@@ -52,18 +69,15 @@ const generar = async (req, res) => {
       empresaId: req.usuario.empresaId,
     });
 
-    // NORMALIZAR LA ESTRUCTURA PARA LA PERSISTENCIA
-    // Si es 'sector', ya es un objeto de objetos. Si es 'zona' o 'central', lo envolvemos en un objeto indexado.
     const reportesAProcesar = tipo === "sector" 
       ? resultado 
       : { [tipo]: resultado };
 
-    // Persistir reportes en BD
     const reportesGuardados = [];
     for (const [key, value] of Object.entries(reportesAProcesar)) {
       const reporte = await ReporteAgente.create({
         tipoAgente: tipo,
-        sector: tipo === "sector" ? key : null, // Solo guarda sector si aplica
+        sector: tipo === "sector" ? key : null,
         contenidoJSON: value.contenidoJSON,
         resumenNLP: value.resumenNLP,
         sucursalId: sucursalId || null,

@@ -155,11 +155,11 @@ const seedData = async (empresaId, usuarioId) => {
 
   // ─── 8. CÓDIGOS DE INVITACIÓN ───
   await CodigoInvitacion.bulkCreate([
-    { codigo: 'EMP-LEDE-2021', rol: 'empleado', empresaId, sucursalId: sucursales[0].id, departamento: 'comercial', usosMaximos: 3, usosRealizados: 3, activo: false },
-    { codigo: 'EMP-LEDE-2023', rol: 'empleado', empresaId, sucursalId: sucursales[0].id, departamento: 'operativo', usosMaximos: 5, usosRealizados: 5, activo: false },
-    { codigo: 'GER-LEDE-ZAFRA', rol: 'gerente', empresaId, sucursalId: sucursales[1].id, departamento: 'operativo', usosMaximos: 2, usosRealizados: 2, activo: false },
-    { codigo: 'EMP-LEDE-ACTIVO', rol: 'empleado', empresaId, sucursalId: sucursales[2].id, departamento: 'comercial', usosMaximos: 10, usosRealizados: 2, activo: true },
-    { codigo: 'GER-LEDE-ACTIVO', rol: 'gerente', empresaId, sucursalId: sucursales[1].id, departamento: 'operativo', usosMaximos: 5, usosRealizados: 0, activo: true },
+    { codigo: 'EMP-LEDE-2021', rol: 'empleado', empresaId, sucursalId: sucursales[0].id, usosMaximos: 3, usosRealizados: 3, activo: false },
+    { codigo: 'EMP-LEDE-2023', rol: 'empleado', empresaId, sucursalId: sucursales[0].id, usosMaximos: 5, usosRealizados: 5, activo: false },
+    { codigo: 'GER-LEDE-ZAFRA', rol: 'gerente', empresaId, sucursalId: sucursales[1].id, usosMaximos: 2, usosRealizados: 2, activo: false },
+    { codigo: 'EMP-LEDE-ACTIVO', rol: 'empleado', empresaId, sucursalId: sucursales[2].id, usosMaximos: 10, usosRealizados: 2, activo: true },
+    { codigo: 'GER-LEDE-ACTIVO', rol: 'gerente', empresaId, sucursalId: sucursales[1].id, usosMaximos: 5, usosRealizados: 0, activo: true },
     { codigo: 'ADM-LEDE-SEED', rol: 'administrador', empresaId, usosMaximos: 1, usosRealizados: 1, activo: false },
   ]);
 
