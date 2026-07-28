@@ -34,18 +34,22 @@ const auditLog = (entidad) => {
 
       const originalJson = res.json.bind(res);
       res.json = async (body) => {
-        if (body && body.success && (method === "POST" || method === "PUT" || method === "DELETE")) {
-          if (method === "POST" && body.data && body.data.id) {
-            entidadId = body.data.id;
+        try {
+          if (body && body.success && (method === "POST" || method === "PUT" || method === "DELETE")) {
+            if (method === "POST" && body.data && body.data.id) {
+              entidadId = body.data.id;
+            }
+            await Auditoria.create({
+              accion,
+              entidad,
+              entidadId,
+              datosAnteriores,
+              datosNuevos,
+              usuarioId,
+            });
           }
-          await Auditoria.create({
-            accion,
-            entidad,
-            entidadId,
-            datosAnteriores,
-            datosNuevos,
-            usuarioId,
-          });
+        } catch (err) {
+          console.error("Error al registrar auditoría:", err.message);
         }
         return originalJson(body);
       };

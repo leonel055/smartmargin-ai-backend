@@ -21,6 +21,10 @@ const listar = async (req, res) => {
           { sucursalId: null },
         ],
       },
+      include: [
+        { association: 'sucursal', attributes: ['id', 'nombre'] },
+        { association: 'zona', attributes: ['id', 'nombre'] },
+      ],
       order: [["createdAt", "DESC"]],
     });
 

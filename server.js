@@ -32,16 +32,16 @@ const PORT = process.env.PORT || 3000;
 
 app.use(helmet());
 const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',')
+  ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
   : ['http://localhost:4200', 'https://smartmarginia.netlify.app'];
 
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('No permitido por CORS'));
-    }
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    if (/https?:\/\/.*\.netlify\.app$/.test(origin)) return callback(null, true);
+    console.warn(`CORS bloqueó origen: ${origin}`);
+    callback(new Error(`No permitido por CORS: ${origin}`));
   },
   credentials: true
 }));
@@ -114,6 +114,13 @@ app.get("/", (req, res) => {
 if (process.env.SENTRY_DSN) {
   app.use(Sentry.Handlers.errorHandler());
 }
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('UNHANDLED REJECTION:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION:', err);
+});
 
 const start = async () => {
   await connectDB();

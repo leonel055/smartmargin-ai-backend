@@ -9,7 +9,7 @@ router.post(
   "/generar",
   authJWT,
   verifyRole("dueno", "administrador", "gerente"),
-  auditLog(),
+  auditLog('reportes'),
   reporteController.generar,
 );
 module.exports = router;

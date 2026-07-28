@@ -14,12 +14,15 @@ const orquestador = async ({ tipo, sucursalId, zonaId, usuarioId, empresaId }) =
   let resultado;
   switch (tipo) {
     case 'sector': {
-      const sucursal = await Sucursal.findOne({
-        where: { id: sucursalId },
-        include: [{ association: 'zona', where: { empresaId } }],
+      const sucursal = await Sucursal.findByPk(sucursalId, {
+        include: [{ association: 'zona' }],
       });
 
       if (!sucursal) {
+        throw new Error('Sucursal no encontrada o no pertenece a tu empresa.');
+      }
+
+      if (empresaId && sucursal.zona && sucursal.zona.empresaId !== empresaId) {
         throw new Error('Sucursal no encontrada o no pertenece a tu empresa.');
       }
 
