@@ -33,7 +33,7 @@ const PORT = process.env.PORT || 3000;
 app.use(helmet());
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
-  : ['http://localhost:4200', 'https://smartmarginia.netlify.app'];
+  : ['http://localhost:4200', 'https://smartmarginai.netlify.app'];
 
 app.use(cors({
   origin: function (origin, callback) {
