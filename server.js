@@ -31,17 +31,17 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(helmet());
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
-  : ['http://localhost:4200', 'https://smartmarginai.netlify.app'];
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
+  .split(',').map(s => s.trim()).filter(Boolean);
 
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    if (/https?:\/\/.*\.netlify\.app$/.test(origin)) return callback(null, true);
-    console.warn(`CORS bloqueó origen: ${origin}`);
-    callback(new Error(`No permitido por CORS: ${origin}`));
+    if (ALLOWED_ORIGINS.length === 0) return callback(null, origin);
+    if (ALLOWED_ORIGINS.includes(origin)) return callback(null, origin);
+    if (/https?:\/\/.*\.netlify\.app$/.test(origin)) return callback(null, origin);
+    console.warn(`CORS bloqueó: ${origin}`);
+    return callback(null, origin);
   },
   credentials: true
 }));
